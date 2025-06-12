@@ -14,6 +14,18 @@
 #define WIPER_LOW   5
 #define WIPER_PARK  6
 
+// millisecond/period
+#define INTERMITTENT_ON_1 12
+#define INTERMITTENT_ON_2 12
+#define INTERMITTENT_ON_3 12
+#define INTERMITTENT_ON_4 12
+
+// millisecond/period
+#define INTERMITTENT_OFF_1 20
+#define INTERMITTENT_OFF_2 16
+#define INTERMITTENT_OFF_3 12
+#define INTERMITTENT_OFF_4 8
+
 #define WASHER_PUMP 10
 
 #define WIPER_CONTROL_GRN_BLK A0
@@ -107,6 +119,9 @@ struct wiper_status_t {
   uint8_t state;
   uint8_t count;
 
+  uint8_t intermittent_on_count;
+  uint8_t intermittent_off_count;
+  
   uint16_t grn_blk;
   uint16_t grn;
   uint8_t  sw_mode;
@@ -131,24 +146,48 @@ void set_wiper_mode(wiper_status_t *ws)
       WIPER_LOW_OFF;
       WIPER_PARK_OFF;
       if(switch_mode == 1) ws->state = 1;
-      if(switch_mode == 2) ws->state = 2;
-      if(switch_mode == 3) ws->state = 3;
-      if(switch_mode == 4) ws->state = 4;
-      if(switch_mode == 5) ws->state = 5;
-      if(switch_mode == 6) ws->state = 6;
+      else if(switch_mode == 2) ws->state = 2;
+      else if(switch_mode == 3) ws->state = 3;
+      else if(switch_mode == 4) ws->state = 4;
+      else if(switch_mode == 5) ws->state = 5;
+      else if(switch_mode == 6) ws->state = 6;
       break;
       
     case 1:
+      ws->intermittent_on_count = INTERMITTENT_ON_1;
+      ws->intermittent_off_count = INTERMITTENT_OFF_1;
+      ws->state = 20;
+      break;
     case 2:
+      ws->intermittent_on_count = INTERMITTENT_ON_2;
+      ws->intermittent_off_count = INTERMITTENT_OFF_2;
+      ws->state = 20;
+      break;
     case 3:
+      ws->intermittent_on_count = INTERMITTENT_ON_3;
+      ws->intermittent_off_count = INTERMITTENT_OFF_3;
+      ws->state = 20;
+      break; 
     case 4:
-    case 5:
+      ws->intermittent_on_count = INTERMITTENT_ON_4;
+      ws->intermittent_off_count = INTERMITTENT_OFF_4;
+      ws->state = 20;
+      break;
+    case 5:  // low speed on
+      WIPER_HIGH_OFF;
       WIPER_LOW_ON;
+      WIPER_PARK_ON;
       if(switch_mode == 0) ws->state = 10;
-      if(switch_mode == 6) ws->state = 6;
+      else if(switch_mode == 1) ws->state = 1;
+      else if(switch_mode == 2) ws->state = 2;
+      else if(switch_mode == 3) ws->state = 3;
+      else if(switch_mode == 4) ws->state = 4;
+      else if(switch_mode == 5) ws->state = 5;
+      else if(switch_mode == 6) ws->state = 6;
+
       break;
       
-    case 10:
+    case 10:  // park delay
       WIPER_HIGH_OFF;
       WIPER_LOW_OFF;
       WIPER_PARK_ON;
@@ -161,24 +200,62 @@ void set_wiper_mode(wiper_status_t *ws)
       }
       break;
   
-    case 6:
+    case 6:  // high speed
       WIPER_HIGH_ON;
       WIPER_LOW_OFF;
       WIPER_PARK_OFF;
       if(switch_mode == 0) ws->state = 10;
-      if(switch_mode == 1) ws->state = 1;
+      else if(switch_mode == 1) ws->state = 1;
+      else if(switch_mode == 2) ws->state = 2;
+      else if(switch_mode == 3) ws->state = 3;
+      else if(switch_mode == 4) ws->state = 4;
+      else if(switch_mode == 5) ws->state = 5;
       break;
-       
+    case 20: // all intermittent modes start here
+      WIPER_HIGH_OFF;
+      WIPER_LOW_OFF;
+      WIPER_PARK_OFF;
+      ws->state = 21;
+      break;
+    case 21:  // intermittent modes
+      WIPER_HIGH_OFF;
+      WIPER_LOW_ON;
+      WIPER_PARK_OFF;
+      if(ws->intermittent_on_count > 0) {
+      
+        ws->intermittent_on_count--;
+        
+      }
+      else {
+        ws->state = 22;
+      }
+      break;
+    case 22: // intermittent mode park and wait
+      WIPER_HIGH_OFF;
+      WIPER_LOW_OFF;
+      WIPER_PARK_ON;
+      if(ws->intermittent_off_count > 0) {
+        
+        ws->intermittent_off_count--;
+      
+      }
+      else {
+        ws->state = 0;  // check switch position.
+      }
+      
+      //  if non-intermittent mode selected immediately start
+      if(switch_mode == 5)      ws->state = 5;
+      else if(switch_mode == 6) ws->state = 6;
+      break;
     default:
       ws->state = 0;
       break;
     
   }
 
-  
 }
 
-struct wiper_status_t wiper_status = {false, false, false, 0, 0, 0, 0, 0};
+struct wiper_status_t wiper_status = {false, false, false, 0, 0, 0, 0, 0, 0};
 
 uint8_t virtual_wiper_control_mode = 0;
 bool    virtual_wiper_control_on = true;
@@ -304,7 +381,7 @@ void loop() {
         Serial.println(VERSION);
         break;
       case 'p':
-        Serial.print(F("mode : "));
+        Serial.print(F("state : "));
         Serial.println(wiper_status.state);
         Serial.println(wiper_status.sw_mode);
         Serial.println(wiper_status.grn_blk);
