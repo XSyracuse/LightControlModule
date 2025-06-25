@@ -48,6 +48,9 @@
 #define WIPER_PARK_ON  digitalWrite(WIPER_PARK, LOW)
 #define WIPER_PARK_OFF digitalWrite(WIPER_PARK, HIGH)
 
+
+#define TURN_SIGNAL_YELLOW_IN A2
+
 uint16_t command = 0x0000;
 
 // command mode definitions
@@ -55,6 +58,9 @@ uint16_t command = 0x0000;
 #define LEFT_TS_CMD    0
 #define RIGHT_TS_CMD   1
 #define HAZARD_CMD     2
+
+#define TS_SW_STATE_0  8
+#define TS_SW_STATE_1  9
 
 #define MARKER_CMD     4
 #define LOW_BEAM_CMD   5
@@ -92,6 +98,17 @@ uint16_t command = 0x0000;
 #define FOG_ON           _bitset_(command, FOG_CMD)
 #define FOG_OFF          _bitrst_(command, FOG_CMD)
 #define FOG_IS_ON        _is_set_(command, FOG_CMD)
+
+#define TS_SW_OFF        _bitrst( command. (TS_SW_STATE_1 | TS_SW_STATE_0) )
+#define TS_SW_LEFT       ( TS_SW_OFF; _bitset(command, TS_SW_STATE_0); )
+#define TS_SW_RIGHT      ( TS_SW_OFF; _bitset(command, TS_SW_STATE_1); )
+ 
+
+enum turn_signal_modes {
+  TURN_SIGNAL_OFF,
+  TURN_SIGNAL_LEFT,
+  TURN_SIGNAL_RIGHT
+};
 
 // timing information
 unsigned long tic_toc_time = 400UL;
@@ -176,7 +193,7 @@ void set_wiper_mode(wiper_status_t *ws)
     case 5:  // low speed on
       WIPER_HIGH_OFF;
       WIPER_LOW_ON;
-      WIPER_PARK_ON;
+      WIPER_PARK_OFF;
       if(switch_mode == 0) ws->state = 10;
       else if(switch_mode == 1) ws->state = 1;
       else if(switch_mode == 2) ws->state = 2;
@@ -258,7 +275,8 @@ void set_wiper_mode(wiper_status_t *ws)
 struct wiper_status_t wiper_status = {false, false, false, 0, 0, 0, 0, 0, 0};
 
 uint8_t virtual_wiper_control_mode = 0;
-bool    virtual_wiper_control_on = true;
+//bool    virtual_wiper_control_on = true;
+bool    virtual_wiper_control_on = false;
   
 void setup() {
 
@@ -283,6 +301,7 @@ void setup() {
   
   //get a time stamp
   time_stamp = millis();
+  
 }
 
 void loop() {
@@ -338,6 +357,25 @@ void loop() {
 
       
     set_wiper_mode(&wiper_status);
+
+    // turn signal control stick mode
+    uint16_t yellow_read = analogRead(TURN_SIGNAL_YELLOW_IN);
+    enum turn_signal_modes ts_stick_position =  decode_turn_signal_mode(yellow_read);
+    Serial.print("Yellow: ");
+    Serial.println(ts_stick_position);
+    
+    if(ts_stick_position == TURN_SIGNAL_OFF) {
+        LEFT_TS_OFF;
+        RIGHT_TS_OFF;
+    }
+    else if(ts_stick_position == TURN_SIGNAL_LEFT) {
+        LEFT_TS_ON;
+        RIGHT_TS_OFF;
+    }
+    else if(ts_stick_position == TURN_SIGNAL_RIGHT) {
+        LEFT_TS_OFF;
+        RIGHT_TS_ON;
+    }  
     
   }// tictoc
 
@@ -477,4 +515,23 @@ uint8_t decode_wiper_mode(uint16_t grn_blk_value, uint16_t grn_value)
   
   return i;
 
+}
+
+// yellow connects 910 ohm resistor to ground for left ts
+//                 310 ohm to gnd for right ts
+//                 open for off
+//                 adc values for 500 ohm upper resistor divider
+
+enum turn_signal_modes decode_turn_signal_mode(uint16_t yellow_value)
+{
+  uint16_t mode[3] = {841, 526, 196};
+  enum turn_signal_modes i = TURN_SIGNAL_OFF;
+
+  if(yellow_value > mode[0]) i = TURN_SIGNAL_OFF;
+
+  else if(yellow_value > mode[1]) i = TURN_SIGNAL_LEFT;
+
+  else if(yellow_value > mode[2]) i = TURN_SIGNAL_RIGHT;
+
+  return i;
 }
